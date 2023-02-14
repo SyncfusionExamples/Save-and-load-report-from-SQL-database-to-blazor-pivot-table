@@ -1,0 +1,179 @@
+﻿@page "/"
+
+@using System.Data
+@using Microsoft.Data.SqlClient;
+@using EFPivotTable.Data;
+
+<SfPivotView @ref=PivotRef TValue="ProductDetails" ID="pivot-table" Height="450" Width="700" ShowToolbar="true" ShowFieldList=true AllowExcelExport=true AllowPdfExport=true Toolbar="@PivotToolbar">
+    <PivotViewDisplayOption View="View.Both"></PivotViewDisplayOption>
+    <PivotViewDataSourceSettings DataSource="@DataSource" EnableSorting="true">
+        <PivotViewColumns>
+            <PivotViewColumn Name="Year"></PivotViewColumn>
+            <PivotViewColumn Name="Quarter"></PivotViewColumn>
+        </PivotViewColumns>
+        <PivotViewRows>
+            <PivotViewRow Name="Country"></PivotViewRow>
+            <PivotViewRow Name="Products"></PivotViewRow>
+        </PivotViewRows>
+        <PivotViewValues>
+            <PivotViewValue Name="Sold" Caption="Units Sold"></PivotViewValue>
+            <PivotViewValue Name="Amount" Caption="Sold Amount"></PivotViewValue>
+        </PivotViewValues>
+        <PivotViewFormatSettings>
+            <PivotViewFormatSetting Name="Amount" Format="C"></PivotViewFormatSetting>
+            <PivotViewFormatSetting Name="Sold" Format="N0"></PivotViewFormatSetting>
+        </PivotViewFormatSettings>
+    </PivotViewDataSourceSettings>
+    <PivotViewEvents TValue="ProductDetails" SaveReport="SaveReport" LoadReport="LoadReport" RenameReport="RenameReport" RemoveReport="RemoveReport" FetchReport="FetchReport"></PivotViewEvents>
+</SfPivotView>
+
+@code {
+    SfPivotView<ProductDetails> PivotRef { get; set; }
+
+    public List<ProductDetails> DataSource { get; set; }
+    public List<ToolbarItems> PivotToolbar = new List<ToolbarItems> {
+        ToolbarItems.New,
+        ToolbarItems.Save,
+        ToolbarItems.SaveAs,
+        ToolbarItems.Rename,
+        ToolbarItems.Remove,
+        ToolbarItems.Load,
+        ToolbarItems.Grid,
+        ToolbarItems.Chart,
+        ToolbarItems.Export,
+        ToolbarItems.SubTotal,
+        ToolbarItems.GrandTotal,
+        ToolbarItems.FieldList
+    };
+    protected override void OnInitialized()
+    {
+        this.DataSource = ProductDetails.GetProductData().ToList();
+    }
+
+    public void SaveReport(SaveReportArgs args)
+    {
+        SaveReportToDB(args.ReportName, args.Report);
+    }
+
+    public void FetchReport(FetchReportArgs args)
+    {
+        args.ReportName = FetchReportListFromDB().ToArray();
+    }
+
+    public async Task LoadReport(LoadReportArgs args)
+    {
+        await this.PivotRef.LoadPersistDataAsync(LoadReportFromDB(args.ReportName).ToString());
+    }
+
+    //to delete a report
+    public void RemoveReport(RemoveReportArgs args)
+    {
+        RemoveReportFromDB(args.ReportName);
+    }
+    // to rename a report
+    public void RenameReport(RenameReportArgs args)
+    {
+        RenameReportInDB(args.ReportName, args.Rename);
+    }
+
+    public void SaveReportToDB(string reportName, string report)
+    {
+        SqlConnection sqlConn = OpenConnection();
+        bool isDuplicate = true;
+        SqlCommand cmd1 = null;
+        foreach (DataRow row in GetDataTable(sqlConn).Rows)
+        {
+            if ((row["ReportName"] as string).Equals(reportName))
+            {
+                isDuplicate = false;
+                cmd1 = new SqlCommand("UPDATE ReportTable set Report=@Report where ReportName like @ReportName", sqlConn);
+            }
+        }
+        if (isDuplicate)
+        {
+            cmd1 = new SqlCommand("INSERT into ReportTable (ReportName,Report) Values(@ReportName,@Report)", sqlConn);
+        }
+        cmd1.Parameters.AddWithValue("@ReportName", reportName);
+        cmd1.Parameters.AddWithValue("@Report", report.ToString());
+        cmd1.ExecuteNonQuery();
+        sqlConn.Close();
+    }
+    public object LoadReportFromDB(string reportName)
+    {
+        SqlConnection sqlConn = OpenConnection();
+        string report = string.Empty;
+        foreach (DataRow row in GetDataTable(sqlConn).Rows)
+        {
+            if ((row["ReportName"] as string).Equals(reportName))
+            {
+                report = (string)row["Report"];
+                break;
+            }
+        }
+        sqlConn.Close();
+        return report;
+    }
+    public List<string> FetchReportListFromDB()
+    {
+        SqlConnection sqlConn = OpenConnection();
+        List<string> reportNames = new List<string>();
+        foreach (DataRow row in GetDataTable(sqlConn).Rows)
+        {
+            if (!string.IsNullOrEmpty(row["ReportName"] as string))
+            {
+                reportNames.Add(row["ReportName"].ToString());
+            }
+        }
+        sqlConn.Close();
+        return reportNames;
+    }
+    public void RenameReportInDB(string reportName, string renameReport)
+    {
+        SqlConnection sqlConn = OpenConnection();
+        SqlCommand cmd1 = null;
+        foreach (DataRow row in GetDataTable(sqlConn).Rows)
+        {
+            if ((row["ReportName"] as string).Equals(reportName))
+            {
+                cmd1 = new SqlCommand("UPDATE ReportTable set ReportName=@RenameReport where ReportName like '%" + reportName + "%'", sqlConn);
+                break;
+            }
+        }
+        cmd1.Parameters.AddWithValue("@RenameReport", renameReport);
+        cmd1.ExecuteNonQuery();
+        sqlConn.Close();
+    }
+    public void RemoveReportFromDB(string reportName)
+    {
+        SqlConnection sqlConn = OpenConnection();
+        SqlCommand cmd1 = null;
+        foreach (DataRow row in GetDataTable(sqlConn).Rows)
+        {
+            if ((row["ReportName"] as string).Equals(reportName))
+            {
+                cmd1 = new SqlCommand("DELETE FROM ReportTable WHERE ReportName LIKE '%" + reportName + "%'", sqlConn);
+                break;
+            }
+        }
+        cmd1.ExecuteNonQuery();
+        sqlConn.Close();
+    }
+    private SqlConnection OpenConnection()
+    {
+        // Replace with your own connection string.
+        string connectionString = @"<Enter your valid connection string here>";
+        SqlConnection sqlConn = new SqlConnection(connectionString);
+        sqlConn.Open();
+        return sqlConn;
+    }
+
+    private DataTable GetDataTable(SqlConnection sqlConn)
+    {
+        string xquery = "SELECT * FROM ReportTable";
+        SqlCommand cmd = new SqlCommand(xquery, sqlConn);
+        SqlDataAdapter da = new SqlDataAdapter(cmd);
+        DataTable dt = new DataTable();
+        da.Fill(dt);
+        return dt;
+    }
+}
