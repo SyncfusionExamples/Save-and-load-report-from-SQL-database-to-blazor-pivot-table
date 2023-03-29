@@ -15,4 +15,4 @@ Visual Studio 2022
 
 ## Blog reference
 
-[Save and load report form SQL Server Database to a Blazor Pivot Table]()
+[Save and load report from SQL Server Database to a Blazor Pivot Table]()
